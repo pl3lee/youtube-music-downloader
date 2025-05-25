@@ -7,7 +7,16 @@
 </head>
 <body>
     <h1>Youtube Music Downloader</h1>
-    <input type="text" placeholder="Password..." id="pwd"/>
+    <div>
+        <label for="pwd">Password:</label>
+        <input type="password" placeholder="Password..." id="pwd"/>
+    </div>
+    <div>
+        <label for="links">YouTube Music Links (one per line):</label>
+        <textarea id="links" rows="10" cols="50" placeholder="Enter YouTube Music links here, one per line..."></textarea>
+    </div>
+    <button id="submitBtn">Download</button>
+    <div id="results"></div>
     <script src="./script.js"></script>
 </body>
 </html>

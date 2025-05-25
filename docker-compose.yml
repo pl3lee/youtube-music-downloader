@@ -1,0 +1,12 @@
+services:
+  youtubemusicdownloader:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000 
+      - PASSWORD=CHANGEME
+    volumes:
+      - ./Music:/app/Music 
+    restart: unless-stopped
+

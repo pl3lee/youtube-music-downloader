@@ -1,0 +1,10 @@
+services:
+  youtubemusicdownloader:
+    image: pl3lee/youtube-music-downloader:latest
+    ports:
+      - "9001:3000"
+    environment:
+      - PASSWORD=CHANGEME
+    volumes:
+      - ./Music:/app/Music 
+    restart: unless-stopped

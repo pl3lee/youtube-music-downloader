@@ -12,7 +12,7 @@ import (
 
 type Config struct {
 	Password string
-	Port string
+	Port     string
 }
 
 type ErrorResponse struct {
@@ -55,6 +55,7 @@ func (cfg *Config) authMiddleware(next http.Handler) http.Handler {
 		clientPass := r.Header.Get("Authorization")
 		if cfg.Password == "" {
 			next.ServeHTTP(w, r)
+			return
 		}
 		if clientPass != cfg.Password {
 			RespondWithError(w, http.StatusUnauthorized, "Unauthorized", nil)
@@ -69,8 +70,9 @@ type DownloadRequest struct {
 }
 
 type Result struct {
+	Link   string `json:"link"`
 	Status string `json:"status"`
-	Error string `json:"error"`
+	Error  string `json:"error,omitempty"`
 }
 
 type DownloadResponse struct {
@@ -95,29 +97,41 @@ func (cfg *Config) handlerDownload(w http.ResponseWriter, r *http.Request) {
 		RespondWithError(w, http.StatusBadRequest, "no links provided", nil)
 		return
 	}
+	// Ensure the ./Music directory exists
+	musicDir := "./Music"
+	if _, err := os.Stat(musicDir); os.IsNotExist(err) {
+		log.Printf("Music directory %s does not exist, creating it.", musicDir)
+		err = os.MkdirAll(musicDir, 0755) // Create directory with appropriate permissions
+		if err != nil {
+			RespondWithError(w, http.StatusInternalServerError, "could not create music directory", err)
+			return
+		}
+	}
 
 	results := []Result{}
 	for _, link := range body.Links {
 		cmd := exec.Command("gytmdl", "--output-path", "./Music", link)
 		log.Printf("Downloading %s...", link)
-		_, err := cmd.CombinedOutput()
+		output, err := cmd.CombinedOutput()
 		status := "success"
 		commandError := ""
 		if err != nil {
 			status = "fail"
 			commandError = err.Error()
+			log.Printf("CLI Error for link %s: %s\nCLI Output: %s", link, err.Error(), string(output))
+		} else {
+			log.Printf("Successfully downloaded %s. Output: %s", link, string(output))
 		}
-
 		results = append(results, Result{
+			Link:   link,
 			Status: status,
-			Error: commandError,
+			Error:  commandError,
 		})
 	}
 	RespondWithJSON(w, http.StatusOK, DownloadResponse{
 		Results: results,
 	})
 }
-
 
 func main() {
 	err := godotenv.Load()
@@ -133,13 +147,15 @@ func main() {
 		log.Println("Warning: No password set")
 	}
 	cfg := Config{
-		Port: port,
+		Port:     port,
 		Password: pwd,
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/download", cfg.authMiddleware(http.HandlerFunc(cfg.handlerDownload)))
+
+	uiFileServer := http.FileServer(http.Dir("ui"))
+	mux.Handle("/", uiFileServer)
 	log.Printf("Server listening on :%s\n", port)
-	http.ListenAndServe(":" + port, mux)
-	
+	http.ListenAndServe(":"+port, mux)
 }

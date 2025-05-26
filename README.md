@@ -7,8 +7,8 @@ This project provides a simple way to download music locally from YouTube Music.
 ## Features
 
 *   **Web UI:** A simple interface to paste YouTube Music links and initiate downloads.
-*   **API Endpoint:** A `/api/download` endpoint to programmatically submit links.
-*   **Authentication:** Optional password protection for the API and UI.
+*   **API Endpoint:** A `/api/download` endpoint to programmatically submit links and a `/api/download/status/:taskID` endpoint for real-time progress.
+*   **Authentication:** Optional password protection for the API.
 *   **Bulk Downloads:** Submit multiple links at once.
 *   **Dockerized:** Easy to deploy using Docker.
 
@@ -87,6 +87,8 @@ PASSWORD=yoursecurepassword
 
 ## API Usage
 
+### 1. Submit Download Task
+
 *   **Endpoint:** `POST /api/download`
 *   **Authentication:** If a `PASSWORD` is set, include it in the `Authorization` header.
 *   **Request Body (JSON):**
@@ -95,21 +97,10 @@ PASSWORD=yoursecurepassword
       "links": ["<youtube-music-link-1>", "<youtube-music-link-2>"]
     }
     ```
-*   **Success Response (200 OK):**
+*   **Success Response (202 Accepted):**
     ```json
     {
-      "results": [
-        {
-          "link": "<youtube-music-link-1>",
-          "status": "success",
-          "error": ""
-        },
-        {
-          "link": "<youtube-music-link-2>",
-          "status": "fail",
-          "error": "details about the failure"
-        }
-      ]
+      "task_id": "<unique-task-identifier>"
     }
     ```
 *   **Error Responses:**
@@ -118,16 +109,59 @@ PASSWORD=yoursecurepassword
     *   `405 Method Not Allowed`: If not using POST.
     *   `500 Internal Server Error`: Server-side issues.
 
+### 2. Get Download Status (Server-Sent Events)
+
+*   **Endpoint:** `GET /api/download/status/:taskID`
+    *   Replace `:taskID` with the ID received from the `POST /api/download` request.
+*   **Authentication:** Access to the task status is granted if the server has a `PASSWORD` configured and the task was created using that same password. No explicit `Authorization` header is needed for this SSE endpoint itself, as the task's legitimacy is pre-verified.
+*   **Response Type:** `text/event-stream`
+*   **Events:**
+    *   **Connection Acknowledgement (comment):**
+        ```
+        : connection established for task <taskID>
+        ```
+    *   **Data Events (for each link processed):**
+        ```
+        data: {"link":"<youtube-music-link>","status":"success|fail","error":<error_message_if_fail>"}
+        ```
+        (Sent multiple times, once per link in the task)
+    *   **Complete Event:**
+        ```
+        event: complete
+        data: {"message":"Task completed"}
+        ```
+        (Sent once all links in the task have been processed)
+    *   **Error Event (server-side processing error):**
+        ```
+        event: error
+        data: {"error":"<server_error_details>"}
+        ```
+*   **Error Responses (for initial connection):**
+    *   `400 Bad Request`: Task ID missing.
+    *   `401 Unauthorized`: If the task cannot be accessed due to authentication mismatch (e.g., server password changed after task creation, or task was created without password when one is now required).
+    *   `404 Not Found`: Task ID not found or already completed and cleaned up.
+    *   `405 Method Not Allowed`: If not using GET.
+    *   `500 Internal Server Error`: Server-side issues (e.g., streaming unsupported).
+
 ### Example cURL Request:
 
-```bash
-curl -X POST http://localhost:3000/api/download \
--H "Content-Type: application/json" \
--H "Authorization: yoursecurepassword" \
--d '{
-  "links": ["https://music.youtube.com/watch?v=xxxxxxxxxxx"]
-}'
-```
+1.  **Submit a download task:**
+    ```bash
+    curl -X POST http://localhost:3000/api/download \
+    -H "Content-Type: application/json" \
+    -H "Authorization: yoursecurepassword" \
+    -d '{
+      "links": ["https://music.youtube.com/watch?v=xxxxxxxxxxx"]
+    }'
+    ```
+    This will return a JSON response like: `{"task_id":"your-new-task-id"}`
+
+2.  **Listen for status updates (using cURL for SSE):**
+    Replace `your-new-task-id` with the actual ID from the previous step.
+    ```bash
+    curl -N http://localhost:3000/api/download/status/your-new-task-id
+    ```
+    *Note: While `curl -N` can show SSE events, a proper SSE client (like `EventSource` in JavaScript) is better for handling the stream.*
 
 ## Docker Hub
 
